@@ -50,7 +50,7 @@ void setPortSocket(char cmd[], Connection* conn){
 	}
     memset(&(conn->addr), 0, sizeof(conn->addr));
 	conn->addr.sin_family = AF_INET;
-	conn->addr.sin_port = port;
+	conn->addr.sin_port = htons(port);
 	if(inet_pton(AF_INET, ip, &(conn->addr.sin_addr)) <= 0){
 		printf("Error inet_pton(): %s(%d)\n", strerror(errno), errno);
 		exit(EXIT_FAILURE);

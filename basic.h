@@ -15,11 +15,12 @@ typedef struct Connection{
     char ip[BUF_SIZE], username[BUF_SIZE], root[BUF_SIZE], dir[BUF_SIZE], rnfrDir[BUF_SIZE];
 } Connection;
 
-int createSocket(int ip, int port);
+int createSocket(int ip, int* port);
 void setPortSocket(char cmd[], Connection* conn);
+int getPortSocket(Connection* conn, int* sock);
 void encodePath(char path[]);
 int lenOfCmd(char cmd[]);
 void getPath(Connection* conn, char dir[], char fullDir[], char cmd[]);
-void sendInfo(const char name[], struct stat* fileStat, int sock);
+int sendInfo(const char name[], struct stat* fileStat, int sock);
 
 #endif

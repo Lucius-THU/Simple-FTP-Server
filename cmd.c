@@ -8,6 +8,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <sys/sendfile.h>
 
 static char listMsg[BUF_SIZE];
 static char msg[BUF_SIZE];
@@ -28,7 +30,8 @@ const Cmd cmds[CMD_CNT] = {
     { normal, "RNTO ", 5, rnto },
     { normal, "PORT ", 5, port },
     { normal, "PASV", 4, pasv },
-    { normal, "LIST", 4, list }
+    { needTransferConn, "LIST", 4, list },
+    { needTransferConn, "RETR ", 5, retr }
 };
 
 void user(char cmd[], Connection* conn){
@@ -176,12 +179,12 @@ void pasv(char cmd[], Connection* conn){
     if(conn->auth == needTransferConn) close(conn->dataSock);
     socklen_t addrSize = sizeof(struct sockaddr_in);
     struct sockaddr_in addr;
+    int port = 20;
     getsockname(conn->sock, (struct sockaddr*)&addr, &addrSize);
-    conn->dataSock = createSocket(INADDR_ANY, 4020);
+    conn->dataSock = createSocket(INADDR_ANY, &port);
     conn->auth = needTransferConn;
-    strcpy(msg, "227 =");
-    strcat(msg, inet_ntoa(*((struct in_addr*)&(addr.sin_addr.s_addr))));
-    strcat(msg, ",0,20\r\n");
+    char pattern[] = "227 =%s,%d,%d\r\n";
+    sprintf(msg, pattern, inet_ntoa(*((struct in_addr*)&(addr.sin_addr.s_addr))), port / 256, port % 256);
     char* p = strchr(msg, '.');
     while(p != NULL){
         *p = ',';
@@ -191,6 +194,7 @@ void pasv(char cmd[], Connection* conn){
 }
 
 void list(char cmd[], Connection* conn){
+    int flag = 1;
     conn->auth = normal;
     strcpy(msg, "150 Start transmitting the information of the file.\r\n");
     write(conn->sock, msg, strlen(msg));
@@ -199,33 +203,68 @@ void list(char cmd[], Connection* conn){
     if(access(fullDir, F_OK) == -1){
         strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
     } else {
-        int sock = conn->dataSock;
-        if(conn->isPasv) sock = accept(conn->dataSock, NULL, NULL);
-        else {
-            if(connect(sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr)) < 0){
-                printf("Error connect(): %s(%d)\n", strerror(errno), errno);
-                exit(EXIT_FAILURE);
+        int sock;
+        if(getPortSocket(conn, &sock) < 0){
+            strcpy(msg, "425 No TCP connection was established.\r\n");
+        } else {
+            struct stat fileStat;
+            stat(fullDir, &fileStat);
+            if(S_ISREG(fileStat.st_mode)){
+                if(sendInfo(dir, &fileStat, sock) < 0){
+                    strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
+                    flag = 0;
+                }
+            } else if(S_ISDIR(fileStat.st_mode)){
+                DIR* dp = opendir(fullDir);
+                struct dirent* fp;
+                while((fp = readdir(dp)) != NULL && flag){
+                    strcpy(name, fullDir);
+                    strcat(name, "/");
+                    strcat(name, fp->d_name);
+                    stat(name, &fileStat);
+                    if(sendInfo(fp->d_name, &fileStat, sock) < 0){
+                        strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
+                        flag = 0;
+                    }
+                }
             }
+            close(sock);
         }
+        if(flag) strcpy(msg, "226 Transmitted successfully.\r\n");
+    }
+    close(conn->dataSock);
+    write(conn->sock, msg, strlen(msg));
+}
+
+void retr(char cmd[], Connection* conn){
+    getPath(conn, dir, fullDir, cmd);
+    if(!access(fullDir, F_OK)){
         struct stat fileStat;
         stat(fullDir, &fileStat);
         if(S_ISREG(fileStat.st_mode)){
-            sendInfo(dir, &fileStat, sock);
-        } else if(S_ISDIR(fileStat.st_mode)){
-            DIR* dp = opendir(fullDir);
-            struct dirent* fp;
-            while(fp = readdir(dp)){
-                if(!strcmp(fp->d_name, ".") || !strcmp(fp->d_name, "..")) continue;
-                strcpy(name, fullDir);
-                strcat(name, "/");
-                strcat(name, fp->d_name);
-                stat(name, &fileStat);
-                sendInfo(fp->d_name, &fileStat, sock);
+            strcpy(msg, "150 Start transferring the file.\r\n");
+            write(conn->sock, msg, strlen(msg));
+            conn->auth = normal;
+            int sock;
+            if(getPortSocket(conn, &sock) < 0){
+                strcpy(msg, "425 No TCP connection was established.\r\n");
+            } else {
+                int fp = open(fullDir, O_RDONLY), ret;
+                off_t offset = 0;
+                while((ret = sendfile(sock, fp, &offset, fileStat.st_size)) > 0);
+                if(ret < 0){
+                    strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
+                } else {
+                    strcpy(msg, "226 Transferred successfully.\r\n");
+                }
+                close(fp);
             }
+            write(conn->sock, msg, strlen(msg));
+            close(sock);
+            close(conn->dataSock);
+            return;
         }
-        close(sock);
-        strcpy(msg, "226 Transmitted successfully.\r\n");
     }
-    close(conn->dataSock);
+    strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
     write(conn->sock, msg, strlen(msg));
 }

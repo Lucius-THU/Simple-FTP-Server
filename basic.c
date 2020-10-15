@@ -9,20 +9,20 @@
 
 static char msg[BUF_SIZE];
 
-int createSocket(int ip, int port){
+int createSocket(int ip, int* port){
     int sock;
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
+	addr.sin_port = htons(*port);
 	addr.sin_addr.s_addr = htonl(ip);
     if((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1){
 		printf("Error socket(): %s(%d)\n", strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-    if(bind(sock, (struct sockaddr*)&addr, sizeof(addr)) == -1){
-		printf("Error bind(): %s(%d)\n", strerror(errno), errno);
-		exit(EXIT_FAILURE);
+    while(bind(sock, (struct sockaddr*)&addr, sizeof(addr)) == -1){
+        *port = *port + 1;
+        addr.sin_port = htons(*port);
 	}
     if(listen(sock, 10) == -1){
 		printf("Error listen(): %s(%d)\n", strerror(errno), errno);
@@ -55,6 +55,14 @@ void setPortSocket(char cmd[], Connection* conn){
 		printf("Error inet_pton(): %s(%d)\n", strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
+}
+
+int getPortSocket(Connection* conn, int* sock){
+    if(conn->isPasv){
+        return *sock = accept(conn->dataSock, NULL, NULL);
+    }
+    *sock = conn->dataSock;
+    return connect(*sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr));
 }
 
 void encodePath(char path[]){
@@ -102,7 +110,7 @@ void getPath(Connection* conn, char dir[], char fullDir[], char cmd[]){
     strcat(fullDir, dir);
 }
 
-void sendInfo(const char name[], struct stat* fileStat, int sock){
+int sendInfo(const char name[], struct stat* fileStat, int sock){
     strcpy(msg, "+");
     char size[] = "s%d,";
     char time[] = "m%d,";
@@ -114,5 +122,5 @@ void sendInfo(const char name[], struct stat* fileStat, int sock){
     sprintf(msg + strlen(msg), iden, fileStat->st_dev, fileStat->st_ino);
     strcat(msg, name);
     strcat(msg, "\r\n");
-    write(sock, msg, strlen(msg));
+    return write(sock, msg, strlen(msg));
 }

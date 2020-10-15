@@ -12,7 +12,13 @@
 static char rootPath[BUF_SIZE];
 
 void initServer(int port, char root[]){
-    int sock = createSocket(INADDR_ANY, port);
+    int ps = port;
+    int sock = createSocket(INADDR_ANY, &ps);
+    if(ps != port){
+        close(sock);
+        printf("Error bind(): Address already in use(98)\n");
+		exit(EXIT_FAILURE);
+    }
     if(access(root, F_OK) == -1){
         printf("Error: '%s' does not exist.\n", root);
 		exit(EXIT_FAILURE);
@@ -56,6 +62,7 @@ void* interact(void* sock){
         }
         msg[len] = 0;
         if(len) cmdCall(msg, conn);
+        else break;
     }
     close(conn->sock);
     free(conn);

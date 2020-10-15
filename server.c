@@ -74,11 +74,11 @@ int cmdCall(char cmd[], Connection* conn){
     for(int i = 0; i < CMD_CNT; i++){
         if(cmds[i].auth <= conn->auth && !strncmp(cmds[i].prefix, cmd, cmds[i].len)){
             cmds[i].func(cmd + cmds[i].len, conn);
-            return strcmp(cmds[i].prefix, "QUIT");
+            return !strcmp(cmds[i].prefix, "QUIT");
         }
     }
     errorCall(cmd, conn);
-    return 1;
+    return 0;
 }
 
 void errorCall(char cmd[], Connection* conn){

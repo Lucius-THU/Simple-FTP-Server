@@ -58,13 +58,9 @@ void setPortSocket(char cmd[], Connection* conn){
 }
 
 int getPortSocket(Connection* conn, int* sock){
-    if(conn->isPasv){
-        *sock = accept(conn->dataSock, NULL, NULL);
-        close(conn->dataSock);
-        return *sock;
-    }
     *sock = conn->dataSock;
-    return connect(*sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr));
+    if(conn->isPasv == 0) return connect(*sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr));
+    return *sock;
 }
 
 void encodePath(char path[]){

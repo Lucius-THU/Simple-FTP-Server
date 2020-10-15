@@ -9,14 +9,15 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <sys/sendfile.h>
-#define __USE_GNU
 #include <fcntl.h>
+#define SIZE (BUF_SIZE << 3)
 
 static char listMsg[BUF_SIZE];
 static char msg[BUF_SIZE];
 static char dir[BUF_SIZE];
 static char fullDir[BUF_SIZE];
 static char name[BUF_SIZE];
+static char buf[SIZE];
 
 const Cmd cmds[CMD_CNT] = {
     { notLogin, "USER ", 5, user },
@@ -35,6 +36,7 @@ const Cmd cmds[CMD_CNT] = {
     { needTransferConn, "RETR ", 5, retr },
     { needTransferConn, "STOR ", 5, stor },
     { needTransferConn, "REST ", 5, rest },
+    { needTransferConn, "APPE ", 5, appe },
     { notLogin, "QUIT", 4, quit }
 };
 
@@ -48,8 +50,10 @@ void user(char cmd[], Connection* conn){
 
 void pass(char cmd[], Connection* conn){
     if(conn->preUser){
-        strcpy(msg, "230 Login successful.\r\n");
-        conn->auth = normal;
+        if(strchr(cmd, '@') != NULL){
+            strcpy(msg, "230 Login successful.\r\n");
+            conn->auth = normal;
+        } else strcpy(msg, "530 Username and password are jointly unacceptable.\r\n");
     } else {
         strcpy(msg, "503 The previous request was not USER.\r\n");
     }
@@ -185,7 +189,7 @@ void pasv(char cmd[], Connection* conn){
     struct sockaddr_in addr;
     int port = 20;
     getsockname(conn->sock, (struct sockaddr*)&addr, &addrSize);
-    conn->dataSock = createSocket(INADDR_ANY, &port);
+    int sock = createSocket(INADDR_ANY, &port);
     conn->auth = needTransferConn;
     char pattern[] = "227 =%s,%d,%d\r\n";
     sprintf(msg, pattern, inet_ntoa(*((struct in_addr*)&(addr.sin_addr.s_addr))), port / 256, port % 256);
@@ -195,6 +199,8 @@ void pasv(char cmd[], Connection* conn){
         p = strchr(p, '.');
     }
     write(conn->sock, msg, strlen(msg));
+    conn->dataSock = accept(sock, NULL, NULL);
+    close(sock);
 }
 
 void list(char cmd[], Connection* conn){
@@ -271,31 +277,48 @@ void retr(char cmd[], Connection* conn){
 
 void stor(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
-    FILE* fp = fopen(fullDir, "w");
+    FILE* fp = fopen(fullDir, "wb");
     if(fp != NULL){
         strcpy(msg, "150 Start transferring the file.\r\n");
         write(conn->sock, msg, strlen(msg));
         conn->auth = normal;
-        int fd = fileno(fp), sock, pair[2];
-        const int SIZE = 8192;
+        int sock, ret;
         if(getPortSocket(conn, &sock) < 0){
             strcpy(msg, "425 No TCP connection was established.\r\n");
         } else {
-            pipe(pair);
-            long offset = conn->offset, ret;
-            conn->offset = 0;
-            while((ret = splice(sock, NULL, pair[1], NULL, SIZE, 0)) > 0){
-                splice(pair[0], NULL, fd, &offset, ret, 0);
-            }
+            while((ret = read(sock, buf, SIZE)) > 0) fwrite(buf, 1, ret, fp);
             if(ret < 0){
-                printf("Error splice(): %s(%d)\n", strerror(errno), errno);
                 strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
             } else {
                 strcpy(msg, "226 Transferred successfully.\r\n");
             }
         }
-        close(fd);
         close(sock);
+        fclose(fp);
+    } else strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
+    write(conn->sock, msg, strlen(msg));
+}
+
+void appe(char cmd[], Connection* conn){
+    getPath(conn, dir, fullDir, cmd);
+    FILE* fp = fopen(fullDir, "ab+");
+    if(fp != NULL){
+        strcpy(msg, "150 Start transferring the file.\r\n");
+        write(conn->sock, msg, strlen(msg));
+        conn->auth = normal;
+        int sock, ret;
+        if(getPortSocket(conn, &sock) < 0){
+            strcpy(msg, "425 No TCP connection was established.\r\n");
+        } else {
+            while((ret = read(sock, buf, SIZE)) > 0) fwrite(buf, 1, ret, fp);
+            if(ret < 0){
+                strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
+            } else {
+                strcpy(msg, "226 Transferred successfully.\r\n");
+            }
+        }
+        close(sock);
+        fclose(fp);
     } else strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
     write(conn->sock, msg, strlen(msg));
 }

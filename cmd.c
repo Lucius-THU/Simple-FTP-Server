@@ -8,8 +8,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <dirent.h>
-#include <fcntl.h>
 #include <sys/sendfile.h>
+#define __USE_GNU
+#include <fcntl.h>
 
 static char listMsg[BUF_SIZE];
 static char msg[BUF_SIZE];
@@ -31,7 +32,8 @@ const Cmd cmds[CMD_CNT] = {
     { normal, "PORT ", 5, port },
     { normal, "PASV", 4, pasv },
     { needTransferConn, "LIST", 4, list },
-    { needTransferConn, "RETR ", 5, retr }
+    { needTransferConn, "RETR ", 5, retr },
+    { needTransferConn, "STOR ", 5, stor }
 };
 
 void user(char cmd[], Connection* conn){
@@ -249,22 +251,50 @@ void retr(char cmd[], Connection* conn){
             if(getPortSocket(conn, &sock) < 0){
                 strcpy(msg, "425 No TCP connection was established.\r\n");
             } else {
-                int fp = open(fullDir, O_RDONLY), ret;
+                int fd = open(fullDir, O_RDONLY), ret;
                 off_t offset = 0;
-                while((ret = sendfile(sock, fp, &offset, fileStat.st_size)) > 0);
+                while((ret = sendfile(sock, fd, &offset, fileStat.st_size)) > 0);
                 if(ret < 0){
                     strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
                 } else {
                     strcpy(msg, "226 Transferred successfully.\r\n");
                 }
-                close(fp);
+                close(fd);
             }
-            write(conn->sock, msg, strlen(msg));
             close(sock);
             close(conn->dataSock);
-            return;
         }
-    }
-    strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
+    } else strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
+    write(conn->sock, msg, strlen(msg));
+}
+
+void stor(char cmd[], Connection* conn){
+    getPath(conn, dir, fullDir, cmd);
+    FILE* fp = fopen(fullDir, "w");
+    if(fp != NULL){
+        strcpy(msg, "150 Start transferring the file.\r\n");
+        write(conn->sock, msg, strlen(msg));
+        conn->auth = normal;
+        int fd = fileno(fp), sock, pair[2];
+        const int SIZE = 8192;
+        if(getPortSocket(conn, &sock) < 0){
+            strcpy(msg, "425 No TCP connection was established.\r\n");
+        } else {
+            pipe(pair);
+            long int offset = 0, ret;
+            while((ret = splice(sock, NULL, pair[1], NULL, SIZE, 0)) > 0){
+                splice(pair[0], NULL, fd, &offset, ret, 0);
+            }
+            if(ret < 0){
+                printf("Error splice(): %s(%d)\n", strerror(errno), errno);
+                strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
+            } else {
+                strcpy(msg, "226 Transferred successfully.\r\n");
+            }
+        }
+        close(fd);
+        close(sock);
+        close(conn->dataSock);
+    } else strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
     write(conn->sock, msg, strlen(msg));
 }

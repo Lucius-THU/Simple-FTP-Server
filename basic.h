@@ -10,6 +10,7 @@ typedef enum Auth{
 
 typedef struct Connection{
     int sock, dataSock, preUser, preRnfr, isPasv;
+    long offset;
     struct sockaddr_in addr;
     Auth auth;
     char ip[BUF_SIZE], username[BUF_SIZE], root[BUF_SIZE], dir[BUF_SIZE], rnfrDir[BUF_SIZE];

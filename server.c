@@ -46,6 +46,7 @@ void* interact(void* sock){
     Connection* conn = (Connection*)malloc(sizeof(Connection));
     conn->sock = *(int*)sock;
     conn->auth = notLogin;
+    conn->offset = 0;
     strcpy(conn->root, rootPath);
     strcpy(conn->dir, "/");
     free(sock);
@@ -61,32 +62,31 @@ void* interact(void* sock){
             exit(EXIT_FAILURE);
         }
         msg[len] = 0;
-        if(len) cmdCall(msg, conn);
-        else break;
+        if(!len || cmdCall(msg, conn)) break;
     }
+    if(conn->auth == needTransferConn && conn->isPasv) close(conn->dataSock);
     close(conn->sock);
     free(conn);
     return NULL;
 }
 
-void cmdCall(char cmd[], Connection* conn){
-    int flag = 0;
+int cmdCall(char cmd[], Connection* conn){
     for(int i = 0; i < CMD_CNT; i++){
         if(cmds[i].auth <= conn->auth && !strncmp(cmds[i].prefix, cmd, cmds[i].len)){
             cmds[i].func(cmd + cmds[i].len, conn);
-            flag = 1;
-            break;
+            return strcmp(cmds[i].prefix, "QUIT");
         }
     }
-    if(!flag){
-        errorCall(cmd, conn);
-    }
+    errorCall(cmd, conn);
+    return 1;
 }
 
 void errorCall(char cmd[], Connection* conn){
     char msg[BUF_SIZE];
-    if(conn->auth == notLogin && !strncmp(cmd, "PASS ", 5)){
-        strcpy(msg, "503 The previous request was not USER.\r\n");
+    if(conn->auth == notLogin){
+            strcpy(msg, "530 Permission denied.\r\n");
+    } else if(conn->auth == normal){
+        strcpy(msg, "425 Please use PORT or PASV request first.\r\n");
     }
     write(conn->sock, msg, strlen(msg));
 }

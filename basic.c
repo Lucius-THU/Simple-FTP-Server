@@ -59,7 +59,9 @@ void setPortSocket(char cmd[], Connection* conn){
 
 int getPortSocket(Connection* conn, int* sock){
     if(conn->isPasv){
-        return *sock = accept(conn->dataSock, NULL, NULL);
+        *sock = accept(conn->dataSock, NULL, NULL);
+        close(conn->dataSock);
+        return *sock;
     }
     *sock = conn->dataSock;
     return connect(*sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr));

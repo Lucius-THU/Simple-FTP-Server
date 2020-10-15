@@ -33,7 +33,9 @@ const Cmd cmds[CMD_CNT] = {
     { normal, "PASV", 4, pasv },
     { needTransferConn, "LIST", 4, list },
     { needTransferConn, "RETR ", 5, retr },
-    { needTransferConn, "STOR ", 5, stor }
+    { needTransferConn, "STOR ", 5, stor },
+    { needTransferConn, "REST ", 5, rest },
+    { notLogin, "QUIT", 4, quit }
 };
 
 void user(char cmd[], Connection* conn){
@@ -234,7 +236,6 @@ void list(char cmd[], Connection* conn){
         }
         if(flag) strcpy(msg, "226 Transmitted successfully.\r\n");
     }
-    close(conn->dataSock);
     write(conn->sock, msg, strlen(msg));
 }
 
@@ -252,7 +253,8 @@ void retr(char cmd[], Connection* conn){
                 strcpy(msg, "425 No TCP connection was established.\r\n");
             } else {
                 int fd = open(fullDir, O_RDONLY), ret;
-                off_t offset = 0;
+                long offset = conn->offset;
+                conn->offset = 0;
                 while((ret = sendfile(sock, fd, &offset, fileStat.st_size)) > 0);
                 if(ret < 0){
                     strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
@@ -262,7 +264,6 @@ void retr(char cmd[], Connection* conn){
                 close(fd);
             }
             close(sock);
-            close(conn->dataSock);
         }
     } else strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
     write(conn->sock, msg, strlen(msg));
@@ -281,7 +282,8 @@ void stor(char cmd[], Connection* conn){
             strcpy(msg, "425 No TCP connection was established.\r\n");
         } else {
             pipe(pair);
-            long int offset = 0, ret;
+            long offset = conn->offset, ret;
+            conn->offset = 0;
             while((ret = splice(sock, NULL, pair[1], NULL, SIZE, 0)) > 0){
                 splice(pair[0], NULL, fd, &offset, ret, 0);
             }
@@ -294,7 +296,18 @@ void stor(char cmd[], Connection* conn){
         }
         close(fd);
         close(sock);
-        close(conn->dataSock);
     } else strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
+    write(conn->sock, msg, strlen(msg));
+}
+
+void quit(char cmd[], Connection* conn){
+    strcpy(msg, "221 Bye.\r\n");
+    write(conn->sock, msg, strlen(msg));
+}
+
+void rest(char cmd[], Connection* conn){
+    cmd[lenOfCmd(cmd)] = 0;
+    conn->offset = atol(cmd);
+    strcpy(msg, "350 Accepted.\r\n");
     write(conn->sock, msg, strlen(msg));
 }

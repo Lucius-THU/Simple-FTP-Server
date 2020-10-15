@@ -1,7 +1,7 @@
 #ifndef CMD_H
 #define CMD_H
 #include "basic.h"
-#define CMD_CNT 15
+#define CMD_CNT 17
 
 typedef struct Cmd{
     Auth auth;
@@ -27,5 +27,7 @@ void pasv(char cmd[], Connection* conn);
 void list(char cmd[], Connection* conn);
 void retr(char cmd[], Connection* conn);
 void stor(char cmd[], Connection* conn);
+void quit(char cmd[], Connection* conn);
+void rest(char cmd[], Connection* conn);
 
 #endif

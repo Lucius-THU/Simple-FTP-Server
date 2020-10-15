@@ -4,7 +4,7 @@
 
 void initServer(int port, char root[]);
 void* interact(void* sock);
-void cmdCall(char cmd[], Connection* conn);
+int cmdCall(char cmd[], Connection* conn);
 void errorCall(char cmd[], Connection* conn);
 
 #endif

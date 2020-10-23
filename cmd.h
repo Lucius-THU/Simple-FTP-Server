@@ -1,7 +1,7 @@
 #ifndef CMD_H
 #define CMD_H
 #include "basic.h"
-#define CMD_CNT 18
+#define CMD_CNT 19
 
 typedef struct Cmd{
     Auth auth;

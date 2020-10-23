@@ -28,6 +28,7 @@ const Cmd cmds[CMD_CNT] = {
     { normal, "PWD", 3, pwd },
     { normal, "MKD ", 4, mkd },
     { normal, "RMD ", 4, rmd },
+    { normal, "DELE ", 5, rmd },
     { normal, "RNFR ", 5, rnfr },
     { normal, "RNTO ", 5, rnto },
     { normal, "PORT ", 5, port },
@@ -81,13 +82,21 @@ void cwd(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
     strcpy(fullDir, conn->root);
     strcat(fullDir, dir);
-    if(access(fullDir, F_OK) == -1){
+    int flag = 0;
+    if(access(fullDir, F_OK) != -1){
+        struct stat fileStat;
+        stat(fullDir, &fileStat);
+        if(S_ISDIR(fileStat.st_mode)){
+            strcpy(msg, "250 Okay.\r\n");
+            strcpy(conn->dir, dir);
+            flag = 1;
+        }
+    } 
+    if(!flag){
         strcpy(msg, "500 ");
         strncat(msg, cmd, lenOfCmd(cmd));
-        strcat(msg, ": No such file or directory.\r\n");
-    } else {
-        strcpy(msg, "250 Okay.\r\n");
-        strcpy(conn->dir, dir);
+        strcat(msg, ": No such directory.\r\n");
+        
     }
     conn->preUser = conn->preRnfr = 0;
     write(conn->sock, msg, strlen(msg));
@@ -228,6 +237,7 @@ void list(char cmd[], Connection* conn){
                 DIR* dp = opendir(fullDir);
                 struct dirent* fp;
                 while((fp = readdir(dp)) != NULL && flag){
+                    if(!strcmp(fp->d_name, ".") || !strcmp(fp->d_name, "..")) continue;
                     strcpy(name, fullDir);
                     strcat(name, "/");
                     strcat(name, fp->d_name);

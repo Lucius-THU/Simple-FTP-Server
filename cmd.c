@@ -12,7 +12,6 @@
 #include <fcntl.h>
 #define SIZE (BUF_SIZE << 3)
 
-static char listMsg[BUF_SIZE];
 static char msg[BUF_SIZE];
 static char dir[BUF_SIZE];
 static char fullDir[BUF_SIZE];

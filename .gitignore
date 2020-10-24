@@ -3,3 +3,4 @@ server
 *.txt
 *.jpg
 .vscode
+autograde.py

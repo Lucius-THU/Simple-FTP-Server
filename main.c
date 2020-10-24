@@ -4,7 +4,7 @@
 
 int main(int argc, char* argv[]){
     char root[BUF_SIZE] = "/tmp";
-    int port = 4021;
+    int port = 21;
     for(int i = 1; i < argc; i += 2){
         if(!strcmp(argv[i], "-port")){
             port = atoi(argv[i + 1]);

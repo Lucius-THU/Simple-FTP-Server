@@ -1,6 +1,6 @@
-list
 server
 *.txt
 *.jpg
 .vscode
 autograde.py
+backup

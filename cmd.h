@@ -3,6 +3,7 @@
 #include "basic.h"
 #define CMD_CNT 19
 
+// 指令的相关信息
 typedef struct Cmd{
     Auth auth;
     char prefix[6];

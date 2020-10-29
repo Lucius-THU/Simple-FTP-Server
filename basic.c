@@ -9,6 +9,7 @@
 
 static char msg[BUF_SIZE];
 
+// 创建服务端 socket
 int createSocket(int ip, int* port){
     int sock;
     struct sockaddr_in addr;
@@ -31,19 +32,20 @@ int createSocket(int ip, int* port){
     return sock;
 }
 
+// 设置 PORT 模式的目标 socket
 void setPortSocket(char cmd[], Connection* conn){
     int len = lenOfCmd(cmd);
     cmd[len] = 0;
     char* p = cmd;
     char ip[20] = "";
-    for(int i = 0; i < 4; i++){
+    for(int i = 0; i < 4; i++){ // 处理收到的 IP 地址
         if(i) strcat(ip, ".");
         strncat(ip, p, strchr(p, ',') - p);
         p = strchr(p, ',') + 1;
     }
     char* f = strchr(p, ',');
     *f = 0;
-    int port = atoi(p) * 256 + atoi(f + 1);
+    int port = atoi(p) * 256 + atoi(f + 1); // 处理收到的端口号
     if((conn->dataSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1){
 		printf("Error socket(): %s(%d)\n", strerror(errno), errno);
 		exit(EXIT_FAILURE);
@@ -57,12 +59,14 @@ void setPortSocket(char cmd[], Connection* conn){
 	}
 }
 
+// 获取数据连接所使用的 socket
 int getPortSocket(Connection* conn, int* sock){
     *sock = conn->dataSock;
-    if(conn->isPasv == 0) return connect(*sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr));
+    if(conn->isPasv == 0) return connect(*sock, (struct sockaddr*)&(conn->addr), sizeof(conn->addr)); // PORT 模式
     return *sock;
 }
 
+// 编码整理路径，去掉多余的 .., / 或 .
 void encodePath(char path[]){
     char s[BUF_SIZE] = "";
     int len = strlen(path);
@@ -86,6 +90,7 @@ void encodePath(char path[]){
     strcpy(path, s);
 }
 
+// 去掉指令末尾的换行符并返回长度
 int lenOfCmd(char cmd[]){
     char* r = strchr(cmd, '\r');
     char* n = strchr(cmd, '\n');
@@ -95,6 +100,7 @@ int lenOfCmd(char cmd[]){
     return len;
 }
 
+// 根据当前路径和请求路径，设置目标路径
 void getPath(Connection* conn, char dir[], char fullDir[], char cmd[]){
     int len = lenOfCmd(cmd);
     if(cmd[0] == '/') strcpy(dir, cmd);
@@ -108,6 +114,7 @@ void getPath(Connection* conn, char dir[], char fullDir[], char cmd[]){
     strcat(fullDir, dir);
 }
 
+// LIST 指令编码文件信息
 int sendInfo(const char name[], struct stat* fileStat, int sock){
     strcpy(msg, "+");
     char size[] = "s%d,";

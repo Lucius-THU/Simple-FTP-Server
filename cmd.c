@@ -13,8 +13,8 @@
 #define SIZE (BUF_SIZE << 3)
 
 static char msg[BUF_SIZE];
-static char dir[BUF_SIZE];
-static char fullDir[BUF_SIZE];
+static char dir[BUF_SIZE]; // 不带服务端根目录的工作路径
+static char fullDir[BUF_SIZE]; // 带服务端根目录的工作路径
 static char name[BUF_SIZE];
 static char buf[SIZE];
 
@@ -49,7 +49,7 @@ void user(char cmd[], Connection* conn){
 }
 
 void pass(char cmd[], Connection* conn){
-    if(conn->preUser){
+    if(conn->preUser){ // PASS 指令前需为 USER 指令
         if(strchr(cmd, '@') != NULL){
             strcpy(msg, "230 Login successful.\r\n");
             conn->auth = normal;
@@ -79,13 +79,11 @@ void type(char cmd[], Connection* conn){
 
 void cwd(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
-    strcpy(fullDir, conn->root);
-    strcat(fullDir, dir);
     int flag = 0;
-    if(access(fullDir, F_OK) != -1){
-        struct stat fileStat;
-        stat(fullDir, &fileStat);
-        if(S_ISDIR(fileStat.st_mode)){
+    if(access(fullDir, F_OK) != -1){   // 如果该路径存在
+        struct stat fileStat;          // ...
+        stat(fullDir, &fileStat);      // ...
+        if(S_ISDIR(fileStat.st_mode)){ // 且是文件夹
             strcpy(msg, "250 Okay.\r\n");
             strcpy(conn->dir, dir);
             flag = 1;
@@ -112,8 +110,8 @@ void pwd(char cmd[], Connection* conn){
 void mkd(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
     strcat(fullDir, "/");
-    if(access(fullDir, F_OK) == -1){
-        for(char* i = strchr(fullDir + strlen(conn->root) + 1, '/'); i != NULL; i = strchr(i + 1, '/')){
+    if(access(fullDir, F_OK) == -1){ // 原路径不存在文件夹
+        for(char* i = strchr(fullDir + strlen(conn->root) + 1, '/'); i != NULL; i = strchr(i + 1, '/')){ // 一级一级向下创建文件夹
             i[0] = 0;
             if(access(fullDir, F_OK) == -1){
                 mkdir(fullDir, 0775);
@@ -132,9 +130,10 @@ void mkd(char cmd[], Connection* conn){
     write(conn->sock, msg, strlen(msg));
 }
 
+// RMD 和 DELE 共用此函数
 void rmd(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
-    char sysCmd[BUF_SIZE] = "rm -rf ";
+    char sysCmd[BUF_SIZE] = "rm -rf "; // 强制删除，支持非空文件夹和单个文件
     strcat(sysCmd, fullDir);
     if(!access(fullDir, F_OK) && !system(sysCmd)){
         strcpy(msg, "250 \"");
@@ -164,7 +163,7 @@ void rnfr(char cmd[], Connection* conn){
 }
 
 void rnto(char cmd[], Connection* conn){
-    if(conn->preRnfr){
+    if(conn->preRnfr){ // RNTO 指令必须紧跟在 RNFR 指令后
         getPath(conn, dir, fullDir, cmd);
         if(!access(fullDir, F_OK)){
             strcpy(msg, "553 \"");
@@ -196,7 +195,7 @@ void pasv(char cmd[], Connection* conn){
     socklen_t addrSize = sizeof(struct sockaddr_in);
     struct sockaddr_in addr;
     int port = 20;
-    getsockname(conn->sock, (struct sockaddr*)&addr, &addrSize);
+    getsockname(conn->sock, (struct sockaddr*)&addr, &addrSize); // 获取本机 IP, 是否有效存疑
     int sock = createSocket(INADDR_ANY, &port);
     conn->auth = needTransferConn;
     char pattern[] = "227 =%s,%d,%d\r\n";
@@ -220,19 +219,19 @@ void list(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
     if(access(fullDir, F_OK) == -1){
         strcpy(msg, "451 The server had trouble reading the file from disk.\r\n");
-    } else {
+    } else { // 路径存在
         int sock;
         if(getPortSocket(conn, &sock) < 0){
             strcpy(msg, "425 No TCP connection was established.\r\n");
         } else {
             struct stat fileStat;
             stat(fullDir, &fileStat);
-            if(S_ISREG(fileStat.st_mode)){
+            if(S_ISREG(fileStat.st_mode)){ // 单个文件直接输出信息
                 if(sendInfo(dir, &fileStat, sock) < 0){
                     strcpy(msg, "426 The TCP connection was established but then broken by the client or by network failure.\r\n");
                     flag = 0;
                 }
-            } else if(S_ISDIR(fileStat.st_mode)){
+            } else if(S_ISDIR(fileStat.st_mode)){ // 文件夹遍历其内容
                 DIR* dp = opendir(fullDir);
                 struct dirent* fp;
                 while((fp = readdir(dp)) != NULL && flag){
@@ -256,19 +255,19 @@ void list(char cmd[], Connection* conn){
 
 void retr(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
-    if(!access(fullDir, F_OK)){
-        struct stat fileStat;
-        stat(fullDir, &fileStat);
-        if(S_ISREG(fileStat.st_mode)){
+    if(!access(fullDir, F_OK)){        // 路径存在
+        struct stat fileStat;          // ...
+        stat(fullDir, &fileStat);      // ...
+        if(S_ISREG(fileStat.st_mode)){ // 且是文件
             strcpy(msg, "150 Start transferring the file.\r\n");
             write(conn->sock, msg, strlen(msg));
             conn->auth = normal;
             int sock;
-            if(getPortSocket(conn, &sock) < 0){
+            if(getPortSocket(conn, &sock) < 0){ // 获取数据连接的 socket
                 strcpy(msg, "425 No TCP connection was established.\r\n");
             } else {
                 int fd = open(fullDir, O_RDONLY), ret;
-                long offset = conn->offset;
+                long offset = conn->offset; // 设置断点续传
                 conn->offset = 0;
                 while((ret = sendfile(sock, fd, &offset, fileStat.st_size)) > 0);
                 if(ret < 0){
@@ -292,7 +291,7 @@ void stor(char cmd[], Connection* conn){
         write(conn->sock, msg, strlen(msg));
         conn->auth = normal;
         int sock, ret;
-        if(getPortSocket(conn, &sock) < 0){
+        if(getPortSocket(conn, &sock) < 0){ // 获取数据连接的 socket
             strcpy(msg, "425 No TCP connection was established.\r\n");
         } else {
             while((ret = read(sock, buf, SIZE)) > 0) fwrite(buf, 1, ret, fp);
@@ -308,6 +307,7 @@ void stor(char cmd[], Connection* conn){
     write(conn->sock, msg, strlen(msg));
 }
 
+// 上传文件的断点续传，直接在已有文件的末尾继续写入
 void appe(char cmd[], Connection* conn){
     getPath(conn, dir, fullDir, cmd);
     FILE* fp = fopen(fullDir, "ab+");
@@ -339,7 +339,7 @@ void quit(char cmd[], Connection* conn){
 
 void rest(char cmd[], Connection* conn){
     cmd[lenOfCmd(cmd)] = 0;
-    conn->offset = atol(cmd);
+    conn->offset = atol(cmd); // 设置断点续传
     strcpy(msg, "350 Accepted.\r\n");
     write(conn->sock, msg, strlen(msg));
 }
